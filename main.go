@@ -4,7 +4,8 @@ import (
 	"time"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-  "fmt"
+  	"fmt"
+	"reflect"
 )
 
 type Student struct {
@@ -38,7 +39,10 @@ func main() {
 	app := fiber.New()
 
 	app.Get("/students", getStudents)
-	app.Post("/students", createNewStudent)
+	app.Get("/student/:id", getStudentById)
+	app.Post("/student", createNewStudent)
+	app.Put("/student/:id", updateStudent)
+	app.Delete("/student/:id", deletedStudent)
 
 	app.Listen(":3000")
 }
@@ -47,17 +51,59 @@ func getStudents(c *fiber.Ctx) error {
 	return c.JSON(students)
 }
 
+func getStudentById(c *fiber.Ctx) error {
+	studentId := c.Params("id") 
+	for _, student := range students {
+		if student.ID.String() == studentId {
+			return c.JSON(student)
+		}
+	}
+	return c.SendStatus(fiber.StatusNotFound)
+}
+
 func createNewStudent(c *fiber.Ctx) error {
 	student := new(Student)
 	if err := c.BodyParser(student); err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
-
-	// Generate a new UUID for the student
 	student.ID = uuid.New()
 	student.CreatedAt = time.Now()
 	student.UpdatedAt = time.Now()
-
 	students = append(students, *student)
 	return c.JSON(student)
+}
+
+func updateStudent(c *fiber.Ctx) error {
+	studentId := c.Params("id")
+	student := new(Student)
+	if err := c.BodyParser(student); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+	}
+
+	for i, s := range students {
+		if s.ID.String() == studentId {
+			val := reflect.ValueOf(student).Elem()
+			currentVal := reflect.ValueOf(&students[i]).Elem()
+			for j := 0; j < val.NumField(); j++ {
+				field := val.Field(j)
+				if !reflect.DeepEqual(field.Interface(), reflect.Zero(field.Type()).Interface()) {
+					currentVal.Field(j).Set(field)
+				}
+			}
+			students[i].UpdatedAt = time.Now()
+			return c.JSON(students[i])
+		}
+	}
+
+	return c.SendStatus(fiber.StatusNotFound)
+}
+func deletedStudent(c *fiber.Ctx) error {
+	studentId := c.Params("id")
+	for i, student := range students {
+		if student.ID.String() == studentId {
+			students = append(students[:i], students[i+1:]...)
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+	}
+	return c.SendStatus(fiber.StatusNotFound)
 }
